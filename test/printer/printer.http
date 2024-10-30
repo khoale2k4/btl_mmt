@@ -1,0 +1,14 @@
+POST http://localhost:3000/v1/printer/create
+Content-Type: application/json
+
+{
+    "status": false,
+    "A3PaperCount": 100,
+    "A4PaperCount": 100,
+    "A5PaperCount": 100,
+    "building": "H6",
+    "floor": 1,
+    "room": 102,
+    "brand": "HP",
+    "model": "HP101"
+}
