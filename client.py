@@ -2,9 +2,7 @@ from collections import defaultdict
 import json
 import os
 import threading
-import requests
-import hashlib
-import bencodepy
+from time import sleep
 import socket
 
 self_ip_address = "127.0.0.1"
@@ -37,21 +35,16 @@ def download(info_hash):
     ports = [peer["port"] for peer in response["peers"]]
     pieces = [[] for _ in response["peers"]]
 
-    fileSize = 5
-
     points = get_peers_points(["đây là mảng user"])
 
     for i in range(len(ips)):
         ips[i], ports[i], pieces[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
 
-    for piece in pieces:
-        print(piece)
-
     peers = [(ips[i], ports[i]) for i in range(len(ips))]
 
-    num_chunks = len(pieces[0])
-
     selected_chunks = {peer: [] for peer in peers}
+
+    num_chunks = len(pieces[0])
 
     for chunk_index in range(num_chunks):
         best_peer = None
@@ -68,15 +61,29 @@ def download(info_hash):
 
         if best_peer is not None:
             selected_chunks[best_peer].append(chunk_index)
+
     fileName = infohash_to_fileName(info_hash)
 
     with open(f"storage/{fileName}", "w") as file:
         pass
+    os.makedirs(f"files/{info_hash}", exist_ok=True)
 
     for (ip, port), chunks in selected_chunks.items():
-        download_file_chunk_from_peer(ip, port, info_hash, chunks, f"storage/{fileName}")
+        peer_thread = threading.Thread(target=download_file_chunk_from_peer, args=(ip, port, info_hash, chunks, f"storage/{fileName}"),daemon=True)
+        peer_thread.start()
 
-    print(f"Completed download file {fileName}, ready to share!")
+    dataToStatusJsonFile = {
+        "fileName" : fileName,
+        "piece_status": [0 for _ in range(num_chunks)]
+    }
+
+    for piece in pieces:
+        for index in range(len(piece)):
+            if piece[index] == 1: 
+                dataToStatusJsonFile["piece_status"][index] = 1 
+
+    with open(f"files/{info_hash}/status.json", "w") as file:
+        json.dump(dataToStatusJsonFile, file, indent=4)
 
 def request_file_from_server(fname):
     return res
@@ -104,7 +111,7 @@ def logout():
     with open("client1/userId.txt", "w") as f:
         pass
 
-def checkLogin() -> bool:
+def checkLogin():
     f = open("userId.txt", "r")
     userId = f.read()
     if userId == "":
@@ -146,7 +153,7 @@ def main():
 def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, file_path):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((peer_ip, peer_port))
-        print(f"Connected to {peer_ip}:{peer_port}")
+        # print(f"Connected to {peer_ip}:{peer_port}")
         
         request = {
             'type': 'GET_FILE_CHUNK',
@@ -158,7 +165,7 @@ def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, fil
         
         response_data = s.recv(4096)
         response = json.loads(response_data.decode('utf-8'))
-        print(response)
+        # print(f"and get chunks: {response['chunk_data']}")
         if response['type'] == 'RETURN_FILE_CHUNK' and response['info_hash'] == info_hash:
             chunk_data = response['chunk_data']
             
@@ -166,7 +173,6 @@ def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, fil
                 for i, chunk in enumerate(chunk_data):
                     f.seek(chunk_list[i] * PIECE_SIZE)
                     f.write(chunk.encode('latin1'))
-                    print(f"Chunk {chunk_list[i]} has been written into file")
         else:
             print("Has been received invalid response from peer")
 
@@ -175,7 +181,7 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             
             s.connect((peer_ip, peer_port))
-            print(f"Connected to {peer_ip}:{peer_port}")
+            # print(f"Connected to {peer_ip}:{peer_port}")
             
             request = {
                 'type': 'GET_FILE_STATUS',
@@ -186,6 +192,7 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
             
             response_data = s.recv(4096)
             response = json.loads(response_data.decode('utf-8'))
+            # print(f"and get pieces: {response['pieces_status']}")
             if response['type'] == 'RETURN_FILE_STATUS' and response['info_hash'] == info_hash:
                 pieces_status = response['pieces_status']
                 return peer_ip, peer_port, pieces_status
@@ -291,10 +298,10 @@ def handle_client(client_socket):
             client_socket.sendall(json.dumps(response).encode('utf-8'))
 
 if checkLogin():
-    print("Login!")
     server_thread = threading.Thread(target=start_peer_server, daemon=True)
     server_thread.start()
+    print("Login!")
+    sleep(0.2)
     main()
-
 
 print("End working")
