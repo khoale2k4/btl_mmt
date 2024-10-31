@@ -3,42 +3,34 @@ import json
 import os
 import threading
 from time import sleep
+from helper import main as helper
 import socket
 
 self_ip_address = "127.0.0.1"
-self_port = 65433
+self_port = 65435
 PIECE_SIZE = 1
-
-# mô phỏng khi muốn download file và gửi yêu cầu tải file lên tracker, tracker trả về những peers chứa file đó
-res = {
-    "peers": [
-        {"ip": "127.0.0.1", "port" : 65432},
-        {"ip": "127.0.0.1", "port" : 65434},
-        {"ip": "127.0.0.1", "port" : 65435},
-    ]
-}
-
-# mô phỏng tracker trả về points của các peers
-pointsRes = {
-    ("127.0.0.1", 65432) : 5,
-    ("127.0.0.1", 65434) : 3,
-    ("127.0.0.1", 65435) : 1,
-}
 
 def infohash_to_fileName(info_hash):
     return f"{info_hash}.txt"
 
 def download(info_hash):
-    response = request_file_from_server(info_hash)
-
-    ips = [peer["ip"] for peer in response["peers"]]
+    response = {
+        "peers" : helper.get_file_info_from_server(info_hash)['data'][0]['peers']
+    }
+    
+    ips = [peer["IPaddress"] for peer in response["peers"]]
     ports = [peer["port"] for peer in response["peers"]]
     pieces = [[] for _ in response["peers"]]
+    point = [0 for _ in response["peers"]]
 
-    points = get_peers_points(["đây là mảng user"])
 
     for i in range(len(ips)):
-        ips[i], ports[i], pieces[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
+        ips[i], ports[i], pieces[i], point[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
+
+    points = {}
+
+    for i in range(len(ips)):
+        points[(ips[i], ports[i])] = point[i]
 
     peers = [(ips[i], ports[i]) for i in range(len(ips))]
 
@@ -100,7 +92,7 @@ def login(username, password) -> bool:
     json_data = json.dumps(data)
     response = requests.post(url, data=json_data, headers={'Content-Type': 'application/json'})
     if response.status_code == 201:
-        f = open("client1/userId.txt", "a")
+        f = open("userId.txt", "a")
         f.write(response.json()['data']['id'])
         return True
     else:
@@ -108,25 +100,42 @@ def login(username, password) -> bool:
         return False
     
 def logout():
-    with open("client1/userId.txt", "w") as f:
+    with open("userId.txt", "w") as f:
         pass
 
 def checkLogin():
     f = open("userId.txt", "r")
     userId = f.read()
     if userId == "":
-        username = ""
-        password = ""
-        while 1:
+        option = input("Login?(y/n)")
+        if option == 'y':
+            print("Login")
+            username = ""
+            password = ""
+            while 1:
+                username = input("Username: ")
+                password = input("Password: ")
+                valid = login(username, password)
+                if valid:
+                    return True
+                else:
+                    con = input("Failed, continue? (y/n): ")
+                    if con == "n":
+                        return False
+        else:
+            print("Signup")
             username = input("Username: ")
             password = input("Password: ")
-            valid = login(username, password)
-            if valid:
-                return True
+            fullName = input("Full name: ")
+            valid = sigup(username, password, fullName)
+            if valid['success']:
+                return checkLogin()
             else:
-                con = input("Failed, continue? (y/n): ")
+                con = input(f"Failed, message: {valid["message"]}, continue? (y/n): ")
                 if con == "n":
                     return False
+                else: 
+                    checkLogin()
 
     else:
         return True
@@ -176,12 +185,13 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
             # print(f"and get pieces: {response['pieces_status']}")
             if response['type'] == 'RETURN_FILE_STATUS' and response['info_hash'] == info_hash:
                 pieces_status = response['pieces_status']
-                return peer_ip, peer_port, pieces_status
+                point = response['point']
+                return peer_ip, peer_port, pieces_status, point
             else:
-                return None, None, None
+                return None, None, None, 0
     except (socket.error, ConnectionRefusedError, TimeoutError) as e:
         print(f"Connection error: {e}")
-        return None, None, None
+        return None, None, None, 0
 
 def start_peer_server(peer_ip=self_ip_address, peer_port=self_port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -192,6 +202,7 @@ def start_peer_server(peer_ip=self_ip_address, peer_port=self_port):
 
         while True:
             client_socket, client_address = server_socket.accept()
+            print(f"Message from {client_address}")
             handle_client(client_socket)
 
 def get_filename_in_folder(folder_path):
@@ -209,8 +220,6 @@ def handle_client(client_socket):
         data = client_socket.recv(1024).decode('utf-8')
         request = json.loads(data)
 
-        print("Received request: "  + str(request))
-
         if request['type'] == 'GET_FILE_STATUS':
             info_hash = request['info_hash']
 
@@ -218,7 +227,8 @@ def handle_client(client_socket):
                 'type': 'RETURN_FILE_STATUS',
                 'info_hash': info_hash,
                 'fName': None,
-                'pieces_status': []
+                'pieces_status': [],
+                'point': 0
             }
 
             with open(f'files/{info_hash}/status.json', 'r') as f:
@@ -229,12 +239,19 @@ def handle_client(client_socket):
                 return
             
             file_name = get_filename_in_folder(f"files/{info_hash}")
+
+            
+            f = open("userId.txt", "r")
+            userId = f.read()
+
+            point = helper.search_by_id(userId)["data"][0]["point"]
             
             response = {
                 'type': 'RETURN_FILE_STATUS',
                 'info_hash': info_hash,
                 'fName': file_name,
-                'pieces_status': data['piece_status']
+                'pieces_status': data['piece_status'],
+                'point': point
             }
 
             client_socket.sendall(json.dumps(response).encode('utf-8'))
@@ -278,6 +295,33 @@ def handle_client(client_socket):
                 'type': 'PONG'
             }
             client_socket.sendall(json.dumps(response).encode('utf-8'))
+
+def sigup(username, passwork, fullname):
+    response = helper.sigup(username, passwork, fullname)
+    print(response)
+    return response
+
+def upload(file):
+    return ""
+
+def main():
+    userInput = ""
+    while 1:
+        userInput = input(">> ")
+        if userInput == "EXIT":
+            return
+
+        userRequest = userInput.split(" ")
+
+        if userRequest[0] == "download":
+            download(userInput.split(" ")[1])
+        elif userRequest[0] == "upload":
+            upload(userInput.split(" ")[1])
+        elif userRequest[0] == "logout":
+            logout()
+            return
+        else:
+            print("User input something")
 
 def main():
     userInput = ""
