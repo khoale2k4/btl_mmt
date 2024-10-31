@@ -56,10 +56,11 @@ export class UserController {
 
 
     @Get('/:id')
-    async findOne(@Param('id') findOne: FindOne, @Res() res) {
+    async findOne(@Param('id') id: UUID, @Res() res) {
         try {
-            
-            const loginResult = await this.userService.findOneById(findOne.id);
+            console.log(id)
+            const loginResult = await this.userService.findOneById(id);
+            console.log(loginResult)
             this.response.initResponse(true, 'Login successfully', loginResult);
             return res.status(HttpStatus.CREATED).json(this.response);
         } catch (error) {
