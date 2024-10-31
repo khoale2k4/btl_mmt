@@ -20,4 +20,8 @@ export class User extends Model<User> {
     @AllowNull(false)
     @Column(DataType.STRING)
     fullName: string;
+    
+    @Default(0)
+    @Column(DataType.INTEGER)
+    point: number;
 }
