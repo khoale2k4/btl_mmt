@@ -1,3 +1,4 @@
 {
-    "piece_status" : [1, 2, 3, 4]
+    "fileName": "file1.txt",
+    "piece_status" : [1, 0, 1, 1]
 }

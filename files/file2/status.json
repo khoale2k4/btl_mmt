@@ -1,3 +1,4 @@
 {
-    "pieces" : [2, 3, 4, 5]
+    "fileName": "file2.txt",
+    "pieces" : [1, 1, 0, 1]
 }
