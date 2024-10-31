@@ -6,7 +6,7 @@ import { UploadFileDto } from "../dtos/upload-file.dto";
 import { CreatePeerHoldFileDto } from "../dtos/create-peer-hold-file.dto";
 
 
-@Controller()
+@Controller('file')
 export class FileController {
     constructor(
         private readonly fileService: FileService,

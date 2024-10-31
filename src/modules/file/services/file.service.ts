@@ -36,7 +36,7 @@ export class FileService {
                 },
                 { 
                     model: User,
-                    attributes: ['fullname']
+                    attributes: ['id', 'fullname', 'point']
                 }
             ]
         };

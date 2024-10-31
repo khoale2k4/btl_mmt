@@ -1,14 +1,21 @@
-POST http://localhost:3000/v1/printer/create
+POST http://localhost:3000/v1/user/signup
 Content-Type: application/json
 
 {
-    "status": false,
-    "A3PaperCount": 100,
-    "A4PaperCount": 100,
-    "A5PaperCount": 100,
-    "building": "H6",
-    "floor": 1,
-    "room": 102,
-    "brand": "HP",
-    "model": "HP101"
+    "username": "khoale",
+    "password": "12345",
+    "fullname": "Lê Khoa"
 }
+
+###
+
+POST http://localhost:3000/v1/user/login
+Content-Type: application/json
+
+{
+    "username": "khoale",
+    "password": "12345"
+}
+
+###
+

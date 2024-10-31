@@ -33,7 +33,7 @@ export class File extends Model<File> {
     size: number;
 
     @Unique
-    @Column(DataType.TEXT)
+    @Column(DataType.STRING(255)) // or another suitable length for your data
     infoHash: string;
 
     @ForeignKey(() => User)
