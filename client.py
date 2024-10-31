@@ -14,6 +14,8 @@ self_port=65434
 PIECE_SIZE = 1
 PIECE_SIZE = 1
 
+# download 754ce21c061ee4c8ca8a0625f7e2ceb683f614c3
+
 # mô phỏng khi muốn download file và gửi yêu cầu tải file lên tracker, tracker trả về những peers chứa file đó
 res = {
     "peers": [
@@ -35,8 +37,10 @@ def infohash_to_fileName(info_hash):
 
 def download(info_hash):
     response = {
-        "peers" : helper.get_file_info_from_server(info_hash)['data'][0]['peers']
+        "peers" : (helper.get_file_info_from_server(info_hash))['data'][0]['peers']
     }
+
+    print(response)
     
     ips = [peer["IPaddress"] for peer in response["peers"]]
     ports = [peer["port"] for peer in response["peers"]]
@@ -51,6 +55,8 @@ def download(info_hash):
 
     for i in range(len(ips)):
         points[(ips[i], ports[i])] = point[i]
+
+    print(points)
 
     peers = [(ips[i], ports[i]) for i in range(len(ips))]
 
@@ -96,6 +102,8 @@ def download(info_hash):
 
     with open(f"files/{info_hash}/status.json", "w") as file:
         json.dump(dataToStatusJsonFile, file, indent=4)
+
+    upload(fileName, len(piece))
 
 def request_file_from_server(fname):
     return res
@@ -191,7 +199,7 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             
             s.connect((peer_ip, peer_port))
-            # print(f"Connected to {peer_ip}:{peer_port}")
+            print(f"Connected to {peer_ip}:{peer_port}")
             
             request = {
                 'type': 'GET_FILE_STATUS',
@@ -264,7 +272,7 @@ def handle_client(client_socket):
             f = open("userId.txt", "r")
             userId = f.read()
 
-            point = helper.search_by_id(userId)["data"][0]["point"]
+            point = helper.search_by_id(userId)["data"]["point"]
             
             response = {
                 'type': 'RETURN_FILE_STATUS',
@@ -328,10 +336,11 @@ def upload(filename, filesize):
     else:
         os.makedirs(f"files/{infohash}", exist_ok=True)
     with open(f"files/{infohash}/status.json", "w") as file:
-        file.write({
+        dataToStatusJsonFile = {
             "fileName": filename,
             "pieces_status" : [1 for _ in range(filesize)]
-        })
+        }
+        json.dump(dataToStatusJsonFile, file, indent=4)
     
     f = open("userId.txt", "r")
     userId = f.read()
@@ -371,13 +380,6 @@ if checkLogin():
 
 # print(responsePeers)
 
-# result = {
-#     "peers" : responsePeers['data'][0]['peers']
-# }
-
-# print(result)
-
-# for peer in responsePeers["data"]:
-#     print(peer)
+# print(get_file_status_in_peer("127.0.0.1", 65436, "754ce21c061ee4c8ca8a0625f7e2ceb683f614c3"))
 
 print("End working")

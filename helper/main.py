@@ -51,9 +51,9 @@ def get_file_info_from_server(info_hash):
         data = json_response.get('data', {})
         message = json_response.get('message', "No message provided")
 
-        print("Success:", success)
-        print("Data:", data)
-        print("Message:", message)
+        # print("Success:", success)
+        # print("Data:", data)
+        # print("Message:", message)
 
         return {'success': success, 'data': data, 'message': message}
 
