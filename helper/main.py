@@ -120,7 +120,7 @@ def search_by_id(user_id):
         message = json_response.get('message', "No message provided")
 
         print("Success:", success)
-        print("Data:", data)
+        print(f"Data of {user_id}:", data)
         print("Message:", message)
 
         return {'success': success, 'data': data, 'message': message}

@@ -239,7 +239,7 @@ def handle_client(client_socket):
             f = open("userId.txt", "r")
             userId = f.read()
 
-            point = helper.search_by_id(userId)["data"][0]["point"]
+            point = helper.search_by_id(userId)["data"]["point"]
             
             response = {
                 'type': 'RETURN_FILE_STATUS',
