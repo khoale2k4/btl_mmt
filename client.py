@@ -2,88 +2,98 @@ from collections import defaultdict
 import json
 import os
 import threading
+from time import sleep
 import requests
 import hashlib
 import bencodepy
 import socket
 
 self_ip_address = "127.0.0.1"
+self_port=65432
+PIECE_SIZE = 1
 PIECE_SIZE = 1
 
+# mô phỏng khi muốn download file và gửi yêu cầu tải file lên tracker, tracker trả về những peers chứa file đó
 res = {
     "peers": [
-        {"ip": "123.0.0.1", "chunks": [1, 2, 7]},
-        {"ip": "123.0.0.2", "chunks": [4, 11, 6]},
-        {"ip": "123.0.0.3", "chunks": [3, 8, 9]},
-        {"ip": "123.0.0.4", "chunks": [5, 10, 12]},
+        {"ip": "127.0.0.1", "port" : 65432},
+        {"ip": "127.0.0.1", "port" : 65434},
+        {"ip": "127.0.0.1", "port" : 65435},
     ]
 }
 
-def download(fileName):
-    with open("server.json", 'r') as file:
-        data = json.load(file)
-    connect_to_server_by_source_port(data["server1"]["source"], data["server1"]["port"])
-    send_filestatus_to_server()
-    response = request_file_from_server(fileName)
-    
-    request_file_pieces_from_peer(response, fileName)
-    merge_file(fileName)
-    print(f"Completed download file {fileName}, ready to share!")
-    
-def upload(ip_address, fname, pieces):
-    print(f"Sending pieces {pieces} of file {fname} to {ip_address}")
+# mô phỏng tracker trả về points của các peers
+pointsRes = {
+    ("127.0.0.1", 65432) : 5,
+    ("127.0.0.1", 65434) : 3,
+    ("127.0.0.1", 65435) : 1,
+}
 
-def connect_to_server_by_source_port(source, port):
-    print(f"User want to connect to {source}, port {port}")
+def infohash_to_fileName(info_hash):
+    return f"{info_hash}.txt"
 
-def send_filestatus_to_server():
-    for root, dirs, files in os.walk("files"):
-        for file in files:
-            if file.endswith(".json"):
-                print(f"Sent {os.path.join(root, file)} to the server!")
+def download(info_hash):
+    response = request_file_from_server(info_hash)
+
+    ips = [peer["ip"] for peer in response["peers"]]
+    ports = [peer["port"] for peer in response["peers"]]
+    pieces = [[] for _ in response["peers"]]
+
+    points = get_peers_points(["đây là mảng user"])
+
+    for i in range(len(ips)):
+        ips[i], ports[i], pieces[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
+
+    peers = [(ips[i], ports[i]) for i in range(len(ips))]
+
+    selected_chunks = {peer: [] for peer in peers}
+
+    num_chunks = len(pieces[0])
+
+    for chunk_index in range(num_chunks):
+        best_peer = None
+        best_priority = -1
+
+        for peer_index, peer_chunks in enumerate(pieces):
+            if peer_chunks[chunk_index] == 1:
+                peer = peers[peer_index]
+                priority = points[peer]
+
+                if priority > best_priority:
+                    best_priority = priority
+                    best_peer = peer
+
+        if best_peer is not None:
+            selected_chunks[best_peer].append(chunk_index)
+
+    fileName = infohash_to_fileName(info_hash)
+
+    with open(f"storage/{fileName}", "w") as file:
+        pass
+    os.makedirs(f"files/{info_hash}", exist_ok=True)
+
+    for (ip, port), chunks in selected_chunks.items():
+        peer_thread = threading.Thread(target=download_file_chunk_from_peer, args=(ip, port, info_hash, chunks, f"storage/{fileName}"),daemon=True)
+        peer_thread.start()
+
+    dataToStatusJsonFile = {
+        "fileName" : fileName,
+        "piece_status": [0 for _ in range(num_chunks)]
+    }
+
+    for piece in pieces:
+        for index in range(len(piece)):
+            if piece[index] == 1: 
+                dataToStatusJsonFile["piece_status"][index] = 1 
+
+    with open(f"files/{info_hash}/status.json", "w") as file:
+        json.dump(dataToStatusJsonFile, file, indent=4)
 
 def request_file_from_server(fname):
     return res
 
-def merge_file(fileName):
-    peer_status_files = [os.path.join('files_from_peers', p, 'status.json') for p in os.listdir('files_from_peers') if p.startswith('peer')]
-    merged_data = defaultdict(list)
-
-    for status_file in peer_status_files:
-        with open(status_file, 'r') as f:
-            data = json.load(f)
-            for piece in data['pieces']:
-                merged_data[piece].append(status_file)
-
-    sorted_pieces = sorted(merged_data.keys())
-
-    os.makedirs(f'files/{fileName}', exist_ok=True)
-    with open(f'files/{fileName}/status.json', 'w') as f:
-        json.dump({'pieces': sorted_pieces}, f, indent=4)
-
-    with open(f'files/{fileName}/{fileName}.txt', 'w') as f:
-        for piece in sorted_pieces:
-            f.write(str(piece) + '\n')
-
-    print(f"Merged {len(peer_status_files)} peer status files.")
-
-def request_file_pieces_from_peer(file_info, fileName):
-    peers = file_info["peers"]
-
-    for i, peer in enumerate(peers, start=1):
-        peer_dir = f"peer{i}"
-        os.makedirs(os.path.join("files_from_peers", peer_dir), exist_ok=True)
-
-        with open(os.path.join("files_from_peers", peer_dir, f"{fileName}.txt"), "w") as f:
-            for chunk in peer["chunks"]:
-                f.write(str(chunk) + "\n")
-
-        status_data = {
-            "fname": f"{fileName}.txt",
-            "pieces": peer["chunks"]
-        }
-        with open(os.path.join("files_from_peers", peer_dir, "status.json"), "w") as f:
-            json.dump(status_data, f, indent=4)
+def get_peers_points(users):
+    return pointsRes
 
 def login(username, password) -> bool:
     url = 'http://localhost:3000/v1/user/login'
@@ -105,7 +115,7 @@ def logout():
     with open("client1/userId.txt", "w") as f:
         pass
 
-def checkLogin() -> bool:
+def checkLogin():
     f = open("userId.txt", "r")
     userId = f.read()
     if userId == "":
@@ -125,46 +135,38 @@ def checkLogin() -> bool:
     else:
         return True
 
-def main():
-    userInput = ""
-    while 1:
-        userInput = input(">> ")
-        if userInput == "EXIT":
-            return
-
-        userRequest = userInput.split(" ")[0]
-
-        if userRequest == "download":
-            download(userInput.split(" ")[1])
-        elif userRequest == "upload":
-            upload(userInput.split(" ")[1])
-        elif userRequest == "logout":
-            logout()
-            return
-        else:
-            print("User input something")
-       
-def connectSocket(source, port, response):
+def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, file_path):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            
-        s.connect((source, port))
-        print(f"Connected to {source}:{port}")
-
+        s.connect((peer_ip, peer_port))
+        # print(f"Connected to {peer_ip}:{peer_port}")
+        
         request = {
-            "info_hash" : "123",
-            "type" : "GET_FILE_STATUS"
+            'type': 'GET_FILE_CHUNK',
+            'info_hash': info_hash,
+            'chunk_list': chunk_list
         }
 
-        s.sendall(json.dumps(response).encode('utf-8'))
-
-###########################
+        s.sendall(json.dumps(request).encode('utf-8'))
+        
+        response_data = s.recv(4096)
+        response = json.loads(response_data.decode('utf-8'))
+        # print(f"and get chunks: {response['chunk_data']}")
+        if response['type'] == 'RETURN_FILE_CHUNK' and response['info_hash'] == info_hash:
+            chunk_data = response['chunk_data']
+            
+            with open(file_path, "r+b") as f:  
+                for i, chunk in enumerate(chunk_data):
+                    f.seek(chunk_list[i] * PIECE_SIZE)
+                    f.write(chunk.encode('latin1'))
+        else:
+            print("Has been received invalid response from peer")
 
 def get_file_status_in_peer(peer_ip, peer_port, info_hash):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             
             s.connect((peer_ip, peer_port))
-            print(f"Connected to {peer_ip}:{peer_port}")
+            # print(f"Connected to {peer_ip}:{peer_port}")
             
             request = {
                 'type': 'GET_FILE_STATUS',
@@ -175,6 +177,7 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
             
             response_data = s.recv(4096)
             response = json.loads(response_data.decode('utf-8'))
+            # print(f"and get pieces: {response['pieces_status']}")
             if response['type'] == 'RETURN_FILE_STATUS' and response['info_hash'] == info_hash:
                 pieces_status = response['pieces_status']
                 return peer_ip, peer_port, pieces_status
@@ -184,13 +187,12 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
         print(f"Connection error: {e}")
         return None, None, None
 
-def start_peer_server(peer_ip='127.0.0.1', peer_port=65432):
+def start_peer_server(peer_ip=self_ip_address, peer_port=self_port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((peer_ip, peer_port))
         server_socket.listen(5)
         print(f"Peer is listening at {peer_ip}:{peer_port}")
-        print("Please type your command:\n")
 
         while True:
             client_socket, client_address = server_socket.accept()
@@ -199,10 +201,10 @@ def start_peer_server(peer_ip='127.0.0.1', peer_port=65432):
 
 def get_filename_in_folder(folder_path):
     try:
-        for file_name in os.listdir(folder_path):
-            if not (file_name.endswith('.json')):
-                return file_name
-        return None  # Nếu không tìm thấy tệp .txt nào
+        with open(f'{folder_path}/status.json', 'r') as f:
+            data = json.load(f)
+            return data["fileName"]
+        
     except FileNotFoundError:
         print("Folder not found")
         return None
@@ -238,8 +240,6 @@ def handle_client(client_socket):
                 'pieces_status': data['piece_status']
             }
 
-            # connectSocket("127.0.0.1", 65433, response)
-
             client_socket.sendall(json.dumps(response).encode('utf-8'))
 
         elif request['type'] == 'GET_FILE_CHUNK':
@@ -263,7 +263,7 @@ def handle_client(client_socket):
             file_name = get_filename_in_folder(f"files/{info_hash}")
             
             try:
-                with open(f"files/{info_hash}/{file_name}", "rb") as f:
+                with open(f"storage/{file_name}", "rb") as f:
                     for chunk_index in chunk_list:
                         f.seek(chunk_index * PIECE_SIZE)
                         data = f.read(PIECE_SIZE)
@@ -282,10 +282,26 @@ def handle_client(client_socket):
             }
             client_socket.sendall(json.dumps(response).encode('utf-8'))
 
+def main():
+    userInput = ""
+    while 1:
+        userInput = input(">> ")
+        if userInput == "EXIT":
+            return
+        userRequest = userInput.split(" ")[0]
+        if userRequest == "download":
+            download(userInput.split(" ")[1])
+        elif userRequest == "logout":
+            logout()
+            return
+        else:
+            print("User input something")
+
 if checkLogin():
-    print("Login!")
     server_thread = threading.Thread(target=start_peer_server, daemon=True)
     server_thread.start()
+    print("Login!")
+    sleep(0.2)
     main()
 
 print("End working")
