@@ -5,11 +5,12 @@ import threading
 import requests
 import hashlib
 import bencodepy
+from helper import main as helper
 import socket
 from time import sleep
 
 self_ip_address = "127.0.0.1"
-self_port=65434
+self_port=65436
 PIECE_SIZE = 1
 PIECE_SIZE = 1
 
@@ -221,7 +222,8 @@ def handle_client(client_socket):
                 'type': 'RETURN_FILE_STATUS',
                 'info_hash': info_hash,
                 'fName': None,
-                'pieces_status': []
+                'pieces_status': [],
+                'point': 0
             }
 
             with open(f'files/{info_hash}/status.json', 'r') as f:
@@ -232,12 +234,19 @@ def handle_client(client_socket):
                 return
             
             file_name = get_filename_in_folder(f"files/{info_hash}")
+
+            
+            f = open("userId.txt", "r")
+            userId = f.read()
+
+            point = helper.search_by_id(userId)["data"][0]["point"]
             
             response = {
                 'type': 'RETURN_FILE_STATUS',
                 'info_hash': info_hash,
                 'fName': file_name,
-                'pieces_status': data['piece_status']
+                'pieces_status': data['piece_status'],
+                'point': point
             }
 
             client_socket.sendall(json.dumps(response).encode('utf-8'))
