@@ -14,23 +14,16 @@ def infohash_to_fileName(info_hash):
     return f"{info_hash}.txt"
 
 def download(info_hash):
-    response = {
-        "peers" : helper.get_file_info_from_server(info_hash)['data'][0]['peers']
-    }
-    
-    ips = [peer["IPaddress"] for peer in response["peers"]]
+    response = request_file_from_server(info_hash)
+
+    ips = [peer["ip"] for peer in response["peers"]]
     ports = [peer["port"] for peer in response["peers"]]
     pieces = [[] for _ in response["peers"]]
-    point = [0 for _ in response["peers"]]
 
-
-    for i in range(len(ips)):
-        ips[i], ports[i], pieces[i], point[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
-
-    points = {}
+    points = get_peers_points(["đây là mảng user"])
 
     for i in range(len(ips)):
-        points[(ips[i], ports[i])] = point[i]
+        ips[i], ports[i], pieces[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
 
     peers = [(ips[i], ports[i]) for i in range(len(ips))]
 
@@ -92,7 +85,7 @@ def login(username, password) -> bool:
     json_data = json.dumps(data)
     response = requests.post(url, data=json_data, headers={'Content-Type': 'application/json'})
     if response.status_code == 201:
-        f = open("userId.txt", "a")
+        f = open("client1/userId.txt", "a")
         f.write(response.json()['data']['id'])
         return True
     else:
@@ -100,42 +93,25 @@ def login(username, password) -> bool:
         return False
     
 def logout():
-    with open("userId.txt", "w") as f:
+    with open("client1/userId.txt", "w") as f:
         pass
 
 def checkLogin():
     f = open("userId.txt", "r")
     userId = f.read()
     if userId == "":
-        option = input("Login?(y/n)")
-        if option == 'y':
-            print("Login")
-            username = ""
-            password = ""
-            while 1:
-                username = input("Username: ")
-                password = input("Password: ")
-                valid = login(username, password)
-                if valid:
-                    return True
-                else:
-                    con = input("Failed, continue? (y/n): ")
-                    if con == "n":
-                        return False
-        else:
-            print("Signup")
+        username = ""
+        password = ""
+        while 1:
             username = input("Username: ")
             password = input("Password: ")
-            fullName = input("Full name: ")
-            valid = sigup(username, password, fullName)
-            if valid['success']:
-                return checkLogin()
+            valid = login(username, password)
+            if valid:
+                return True
             else:
-                con = input(f"Failed, message: {valid["message"]}, continue? (y/n): ")
+                con = input("Failed, continue? (y/n): ")
                 if con == "n":
                     return False
-                else: 
-                    checkLogin()
 
     else:
         return True
@@ -185,13 +161,12 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
             # print(f"and get pieces: {response['pieces_status']}")
             if response['type'] == 'RETURN_FILE_STATUS' and response['info_hash'] == info_hash:
                 pieces_status = response['pieces_status']
-                point = response['point']
-                return peer_ip, peer_port, pieces_status, point
+                return peer_ip, peer_port, pieces_status
             else:
-                return None, None, None, 0
+                return None, None, None
     except (socket.error, ConnectionRefusedError, TimeoutError) as e:
         print(f"Connection error: {e}")
-        return None, None, None, 0
+        return None, None, None
 
 def start_peer_server(peer_ip=self_ip_address, peer_port=self_port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -244,7 +219,7 @@ def handle_client(client_socket):
             f = open("userId.txt", "r")
             userId = f.read()
 
-            point = helper.search_by_id(userId)["data"][0]["point"]
+            point = helper.search_by_id(userId)["data"]["point"]
             
             response = {
                 'type': 'RETURN_FILE_STATUS',
@@ -295,33 +270,6 @@ def handle_client(client_socket):
                 'type': 'PONG'
             }
             client_socket.sendall(json.dumps(response).encode('utf-8'))
-
-def sigup(username, passwork, fullname):
-    response = helper.sigup(username, passwork, fullname)
-    print(response)
-    return response
-
-def upload(file):
-    return ""
-
-def main():
-    userInput = ""
-    while 1:
-        userInput = input(">> ")
-        if userInput == "EXIT":
-            return
-
-        userRequest = userInput.split(" ")
-
-        if userRequest[0] == "download":
-            download(userInput.split(" ")[1])
-        elif userRequest[0] == "upload":
-            upload(userInput.split(" ")[1])
-        elif userRequest[0] == "logout":
-            logout()
-            return
-        else:
-            print("User input something")
 
 def main():
     userInput = ""
