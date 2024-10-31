@@ -3,9 +3,6 @@ import json
 import os
 import threading
 from time import sleep
-import requests
-import hashlib
-import bencodepy
 from helper import main as helper
 import socket
 
@@ -14,36 +11,31 @@ self_port=65432
 PIECE_SIZE = 1
 PIECE_SIZE = 1
 
-# mô phỏng khi muốn download file và gửi yêu cầu tải file lên tracker, tracker trả về những peers chứa file đó
-res = {
-    "peers": [
-        {"ip": "127.0.0.1", "port" : 65432},
-        {"ip": "127.0.0.1", "port" : 65434},
-        {"ip": "127.0.0.1", "port" : 65435},
-    ]
-}
-
-# mô phỏng tracker trả về points của các peers
-pointsRes = {
-    ("127.0.0.1", 65432) : 5,
-    ("127.0.0.1", 65434) : 3,
-    ("127.0.0.1", 65435) : 1,
-}
-
 def infohash_to_fileName(info_hash):
     return f"{info_hash}.txt"
 
 def download(info_hash):
-    response = request_file_from_server(info_hash)
+    response = {
+        "peers" : (helper.get_file_info_from_server(info_hash))['data'][0]['peers']
+    }
 
-    ips = [peer["ip"] for peer in response["peers"]]
+    print(response)
+    
+    ips = [peer["IPaddress"] for peer in response["peers"]]
     ports = [peer["port"] for peer in response["peers"]]
     pieces = [[] for _ in response["peers"]]
+    point = [0 for _ in range(len(response["peers"]))]
 
-    points = get_peers_points(["đây là mảng user"])
 
     for i in range(len(ips)):
-        ips[i], ports[i], pieces[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
+        ips[i], ports[i], pieces[i], point[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
+
+    points = {}
+
+    for i in range(len(ips)):
+        points[(ips[i], ports[i])] = point[i]
+
+    print(points)
 
     peers = [(ips[i], ports[i]) for i in range(len(ips))]
 
@@ -90,11 +82,8 @@ def download(info_hash):
     with open(f"files/{info_hash}/status.json", "w") as file:
         json.dump(dataToStatusJsonFile, file, indent=4)
 
-def request_file_from_server(fname):
-    return res
+    upload(fileName, len(piece))
 
-def get_peers_points(users):
-    return pointsRes
 
 def login(username, password) -> bool:
     url = 'http://localhost:3000/v1/user/login'
@@ -105,7 +94,7 @@ def login(username, password) -> bool:
     json_data = json.dumps(data)
     response = requests.post(url, data=json_data, headers={'Content-Type': 'application/json'})
     if response.status_code == 201:
-        f = open("client1/userId.txt", "a")
+        f = open("userId.txt", "a")
         f.write(response.json()['data']['id'])
         return True
     else:
@@ -113,25 +102,42 @@ def login(username, password) -> bool:
         return False
     
 def logout():
-    with open("client1/userId.txt", "w") as f:
+    with open("userId.txt", "w") as f:
         pass
 
 def checkLogin():
     f = open("userId.txt", "r")
     userId = f.read()
     if userId == "":
-        username = ""
-        password = ""
-        while 1:
+        option = input("Login?(y/n)")
+        if option == 'y':
+            print("Login")
+            username = ""
+            password = ""
+            while 1:
+                username = input("Username: ")
+                password = input("Password: ")
+                valid = login(username, password)
+                if valid:
+                    return True
+                else:
+                    con = input("Failed, continue? (y/n): ")
+                    if con == "n":
+                        return False
+        else:
+            print("Signup")
             username = input("Username: ")
             password = input("Password: ")
-            valid = login(username, password)
-            if valid:
-                return True
+            fullName = input("Full name: ")
+            valid = sigup(username, password, fullName)
+            if valid['success']:
+                return checkLogin()
             else:
-                con = input("Failed, continue? (y/n): ")
+                con = input(f"Failed, message: {valid["message"]}, continue? (y/n): ")
                 if con == "n":
                     return False
+                else: 
+                    checkLogin()
 
     else:
         return True
@@ -167,7 +173,7 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             
             s.connect((peer_ip, peer_port))
-            # print(f"Connected to {peer_ip}:{peer_port}")
+            print(f"Connected to {peer_ip}:{peer_port}")
             
             request = {
                 'type': 'GET_FILE_STATUS',
@@ -181,12 +187,13 @@ def get_file_status_in_peer(peer_ip, peer_port, info_hash):
             # print(f"and get pieces: {response['pieces_status']}")
             if response['type'] == 'RETURN_FILE_STATUS' and response['info_hash'] == info_hash:
                 pieces_status = response['pieces_status']
-                return peer_ip, peer_port, pieces_status
+                point = response['point']
+                return peer_ip, peer_port, pieces_status, point
             else:
-                return None, None, None
+                return None, None, None, 0
     except (socket.error, ConnectionRefusedError, TimeoutError) as e:
         print(f"Connection error: {e}")
-        return None, None, None
+        return None, None, None, 0
 
 def start_peer_server(peer_ip=self_ip_address, peer_port=self_port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -239,7 +246,7 @@ def handle_client(client_socket):
             f = open("userId.txt", "r")
             userId = f.read()
 
-            point = helper.search_by_id(userId)["data"][0]["point"]
+            point = helper.search_by_id(userId)["data"]["point"]
             
             response = {
                 'type': 'RETURN_FILE_STATUS',
@@ -290,6 +297,28 @@ def handle_client(client_socket):
                 'type': 'PONG'
             }
             client_socket.sendall(json.dumps(response).encode('utf-8'))
+
+def sigup(username, passwork, fullname):
+    response = helper.sigup(username, passwork, fullname)
+    print(response)
+    return response
+
+def upload(filename, filesize):
+    infohash = helper.generate_hash_info(f"storage/{filename}")
+    if os.path.exists(f"files/{infohash}") and os.path.isdir(f"files/{infohash}"):
+        pass
+    else:
+        os.makedirs(f"files/{infohash}", exist_ok=True)
+    with open(f"files/{infohash}/status.json", "w") as file:
+        dataToStatusJsonFile = {
+            "fileName": filename,
+            "pieces_status" : [1 for _ in range(filesize)]
+        }
+        json.dump(dataToStatusJsonFile, file, indent=4)
+    
+    f = open("userId.txt", "r")
+    userId = f.read()
+    helper.upload_file(infohash, filename, filesize, self_ip_address, self_port, userId)
 
 def main():
     userInput = ""
