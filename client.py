@@ -131,25 +131,6 @@ def checkLogin():
     else:
         return True
 
-def main():
-    userInput = ""
-    while 1:
-        userInput = input(">> ")
-        if userInput == "EXIT":
-            return
-
-        userRequest = userInput.split(" ")[0]
-
-        if userRequest == "download":
-            download(userInput.split(" ")[1])
-        elif userRequest == "logout":
-            logout()
-            return
-        else:
-            print("User input something")
-
-###########################
-
 def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, file_path):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((peer_ip, peer_port))
@@ -211,12 +192,11 @@ def start_peer_server(peer_ip=self_ip_address, peer_port=self_port):
 
         while True:
             client_socket, client_address = server_socket.accept()
-            print(f"Message from {client_address}")
             handle_client(client_socket)
 
 def get_filename_in_folder(folder_path):
     try:
-        with open(f'/{folder_path}/status.json', 'r') as f:
+        with open(f'{folder_path}/status.json', 'r') as f:
             data = json.load(f)
             return data["fileName"]
         
@@ -228,6 +208,8 @@ def handle_client(client_socket):
     with client_socket:
         data = client_socket.recv(1024).decode('utf-8')
         request = json.loads(data)
+
+        print("Received request: "  + str(request))
 
         if request['type'] == 'GET_FILE_STATUS':
             info_hash = request['info_hash']
@@ -296,6 +278,21 @@ def handle_client(client_socket):
                 'type': 'PONG'
             }
             client_socket.sendall(json.dumps(response).encode('utf-8'))
+
+def main():
+    userInput = ""
+    while 1:
+        userInput = input(">> ")
+        if userInput == "EXIT":
+            return
+        userRequest = userInput.split(" ")[0]
+        if userRequest == "download":
+            download(userInput.split(" ")[1])
+        elif userRequest == "logout":
+            logout()
+            return
+        else:
+            print("User input something")
 
 if checkLogin():
     server_thread = threading.Thread(target=start_peer_server, daemon=True)
