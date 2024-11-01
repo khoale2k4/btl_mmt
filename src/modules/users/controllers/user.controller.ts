@@ -77,7 +77,7 @@ export class UserController {
     }
 
 
-    @Get('/:id')
+    @Post('/:id')
     async updateOne(@Param('id') id: UUID, @Body() payload: UpdateDto, @Res() res) {
         try {
             console.log(id)
