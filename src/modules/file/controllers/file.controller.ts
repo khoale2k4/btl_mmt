@@ -19,7 +19,7 @@ export class FileController {
     async fetch(@Res() res, @Query('infoHash') infoHash: string) {
         try { 
             const file = await this.fileService.search(infoHash);
-            this.response.initResponse(true, "Tạo peer thành công", file);
+            this.response.initResponse(true, "Tìm thông tin thành công", file);
             return res.status(HttpStatus.CREATED).json(this.response);
         } catch (error) {
 			this.logger.error(error.message, error.stack);
@@ -67,7 +67,7 @@ export class FileController {
     async createPeerHoldFile(@Req() req, @Body() createPeerHoldFileDto: CreatePeerHoldFileDto, @Res() res) {
         try { 
             const createdPHF = await this.fileService.createPHF(createPeerHoldFileDto);
-            this.response.initResponse(true, "Tạo peer thành công", createdPHF);
+            this.response.initResponse(true, "Tạo peer giữ file thành công", createdPHF);
             return res.status(HttpStatus.CREATED).json(this.response);
         } catch (error) {
 			this.logger.error(error.message, error.stack);

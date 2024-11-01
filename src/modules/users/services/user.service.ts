@@ -5,6 +5,7 @@ import { SignupDto } from "../dtos/signup.dto";
 import * as bcrypt from 'bcrypt';
 import { loginDto } from "../dtos/login.dto";
 import { UUID } from "crypto";
+import { UpdateDto } from "../dtos/update.dto";
 
 @Injectable()
 export class UserService {
@@ -54,6 +55,14 @@ export class UserService {
 
     async findOneById(id: UUID) {
         return await this.userRepository.findByPk(id);
+    }
+
+    async updateOneById(payload: UpdateDto, id: UUID) {
+        return this.userRepository.update(payload, {
+            where: {
+                id
+            }
+        });
     }
     
 }
