@@ -2,13 +2,13 @@ from collections import defaultdict
 import json
 import os
 import threading
-from time import sleep
+from time import sleep, time
 from helper import main as helper
 import socket
 
 self_ip_address = "127.0.0.1"
 self_port = 65435
-PIECE_SIZE = 1
+PIECE_SIZE = 1024
 file_lock = threading.Lock()
 
 def download(magnet_link):
@@ -65,7 +65,7 @@ def download(magnet_link):
         if data != None and currentStatus[chunk_index] == 1:
             continue
         best_peer = None
-        best_priority = -1
+        best_priority = -1000
 
         for peer_index, peer_chunks in enumerate(pieces):
             if peer_chunks[chunk_index] == 1:
@@ -257,7 +257,7 @@ def checkLogin():
 def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, file_path):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((peer_ip, peer_port))
-        # print(f"Connected to {peer_ip}:{peer_port}")
+        print(f"Connected to {peer_ip}:{peer_port}. Asking for: {str(chunk_list)}")
         
         request = {
             'type': 'GET_FILE_CHUNK',
@@ -267,34 +267,44 @@ def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, fil
 
         s.sendall(json.dumps(request).encode('utf-8'))
         
-        response_data = s.recv(4096)
+        
+        response_data = b""
+        while True:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            response_data += chunk
         response = json.loads(response_data.decode('utf-8'))
         # print(f"and get chunks: {response['chunk_data']}")
         if response['type'] == 'RETURN_FILE_CHUNK' and response['info_hash'] == info_hash:
             chunk_data = response['chunk_data']
 
-            with file_lock:
-                with open(f"files/{info_hash}/status.json", "r") as file:
-                    data = json.load(file)
-                    currentStatus = data["piece_status"]
-                    fileName = data["fileName"]
+            for i, chunk in enumerate(chunk_data):
+                with file_lock:
+                    # Đọc status từ file
+                    with open(f"files/{info_hash}/status.json", "r") as file:
+                        data = json.load(file)
+                        currentStatus = data["piece_status"]
+                        fileName = data["fileName"]
 
-                with open(file_path, "r+b") as f:  
-                    for i, chunk in enumerate(chunk_data):
+                    # Ghi một phần chunk vào file
+                    with open(file_path, "r+b") as f:
                         f.seek(chunk_list[i] * PIECE_SIZE)
                         f.write(chunk.encode('latin1'))
                         currentStatus[chunk_list[i]] = 1
+                        print(currentStatus)
 
-                print(currentStatus)
+                    # Cập nhật status.json với thay đổi
+                    with open(f"files/{info_hash}/status.json", "w") as file:
+                        json.dump(
+                            {
+                                "fileName": fileName,
+                                "piece_status": currentStatus
+                            },
+                            file
+                        )
+                sleep(0.05)
 
-                with open(f"files/{info_hash}/status.json", "w") as file:
-                    json.dump(
-                        {
-                            "fileName": fileName,
-                            "piece_status": currentStatus
-                        }, 
-                        file
-                    )
         else:
             print("Has been received invalid response from peer")
 
@@ -498,5 +508,6 @@ if checkLogin():
     print("Login!")
     sleep(0.2)
     main()
+
 
 print("End working")

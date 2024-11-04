@@ -17,15 +17,15 @@ def upload_file(hash_info, file_name, filesize, address, port, user_id):
         data = json_response.get('data', {})
         message = json_response.get('message', "No message provided")
 
-        print("Success:", success)
-        print("Data:", data)
-        print("Message:", message)
+        # print("Success:", success)
+        # print("Data:", data)
+        # print("Message:", message)
 
         return {'success': success, 'data': data, 'message': message}
 
     except ValueError:
         # If JSON decoding fails, handle it as a non-JSON response
-        print("Received non-JSON response:", response.text)
+        # print("Received non-JSON response:", response.text)
         return {'success': False, 'data': {}, 'message': "Non-JSON response"}
 
 def generate_hash_info(file_path, hash_algorithm = 'sha1'):
@@ -48,7 +48,7 @@ def generate_hash_info(file_path, hash_algorithm = 'sha1'):
     # return hash_func.hexdigest()
 
 def get_file_info_from_server(info_hash):
-    response = requests.get(f'http://localhost:3000/v1/file/fetch?hash_info={info_hash}')
+    response = requests.get(f'http://localhost:3000/v1/file/fetch?infoHash={info_hash}')
     try:
         # Try to parse the response as JSON regardless of the content type header
         json_response = response.json()
@@ -66,7 +66,7 @@ def get_file_info_from_server(info_hash):
 
     except ValueError:
         # If JSON decoding fails, handle it as a non-JSON response
-        print("Received non-JSON response:", response.text)
+        # print("Received non-JSON response:", response.text)
         return {'success': False, 'data': {}, 'message': "Non-JSON response"}
 
 def sigup(username, password, fullname):
@@ -80,15 +80,15 @@ def sigup(username, password, fullname):
         data = json_response.get('data', {})
         message = json_response.get('message', "No message provided")
 
-        print("Success:", success)
-        print("Data:", data)
-        print("Message:", message)
+        # print("Success:", success)
+        # print("Data:", data)
+        # print("Message:", message)
 
         return {'success': success, 'data': data, 'message': message}
 
     except ValueError:
         # If JSON decoding fails, handle it as a non-JSON response
-        print("Received non-JSON response:", response.text)
+        # print("Received non-JSON response:", response.text)
         return {'success': False, 'data': {}, 'message': "Non-JSON response"}
 
 def login(username, password):
@@ -103,15 +103,15 @@ def login(username, password):
         data = json_response.get('data', {})
         message = json_response.get('message', "No message provided")
 
-        print("Success:", success)
-        print("Data:", data)
-        print("Message:", message)
+        # print("Success:", success)
+        # print("Data:", data)
+        # print("Message:", message)
 
         return {'success': success, 'data': data, 'message': message}
 
     except ValueError:
         # If JSON decoding fails, handle it as a non-JSON response
-        print("Received non-JSON response:", response.text)
+        # print("Received non-JSON response:", response.text)
         return {'success': False, 'data': {}, 'message': "Non-JSON response"}
 
 def search_by_id(user_id):
@@ -126,15 +126,15 @@ def search_by_id(user_id):
         data = json_response.get('data', {})
         message = json_response.get('message', "No message provided")
 
-        print("Success:", success)
-        print("Data:", data)
-        print("Message:", message)
+        # print("Success:", success)
+        # print("Data:", data)
+        # print("Message:", message)
 
         return {'success': success, 'data': data, 'message': message}
 
     except ValueError:
         # If JSON decoding fails, handle it as a non-JSON response
-        print("Received non-JSON response:", response.text)
+        # print("Received non-JSON response:", response.text)
         return {'success': False, 'data': {}, 'message': "Non-JSON response"}
 
 def generate_magnet_link(info_hash, filename=None, file_size=None, trackers=None, web_seeds=None):
@@ -198,9 +198,9 @@ def update_user(new_user_point, user_id):
         data = json_response.get('data', {})
         message = json_response.get('message', "No message provided")
 
-        print("Success:", success)
-        print("Data:", data)
-        print("Message:", message)
+        # print("Success:", success)
+        # print("Data:", data)
+        # print("Message:", message)
 
         return {'success': success, 'data': data, 'message': message}
 
@@ -232,7 +232,7 @@ def extract_torrent_info(torrent_file):
         'web_seeds': web_seeds
     }
 
-def file_to_torrent(file_path, trackers=None, file_size=None, web_seeds=None):
+def file_to_torrent(file_path, fileName, trackers=None, file_size=None, web_seeds=None):
     # Kiểm tra file đầu vào có tồn tại không
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"File '{file_path}' không tồn tại.")
@@ -257,7 +257,7 @@ def file_to_torrent(file_path, trackers=None, file_size=None, web_seeds=None):
             torrent.web_seeds = [seed.strip() for seed in web_seeds]
 
     # Đặt đường dẫn lưu file .torrent
-    output_path = f"{file_path}.torrent"
+    output_path = f"torrent/{fileName}.torrent"
     
     # Lưu file torrent
     torrent.to_file(output_path)
