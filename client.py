@@ -4,8 +4,9 @@ import os
 import threading
 import requests
 import hashlib
-import bencodepy
 import socket
+import urllib.parse
+from helper import main as helper
 
 self_ip_address = "127.0.0.1"
 PIECE_SIZE = 1
@@ -85,17 +86,15 @@ def request_file_pieces_from_peer(file_info, fileName):
         with open(os.path.join("files_from_peers", peer_dir, "status.json"), "w") as f:
             json.dump(status_data, f, indent=4)
 
+def sigup(username, passwork, fullname):
+    response = helper.sigup(username, passwork, fullname)
+    print(response.text)
+
 def login(username, password) -> bool:
-    url = 'http://localhost:3000/v1/user/login'
-    data = {
-        "username": username,
-        "password": password
-    }
-    json_data = json.dumps(data)
-    response = requests.post(url, data=json_data, headers={'Content-Type': 'application/json'})
-    if response.status_code == 201:
+    response = helper.login(username, password)
+    if response.success == True:
         f = open("client1/userId.txt", "a")
-        f.write(response.json()['data']['id'])
+        f.write(response.data.id)
         return True
     else:
         print("Wrong username or password!")
@@ -106,7 +105,7 @@ def logout():
         pass
 
 def checkLogin() -> bool:
-    f = open("userId.txt", "r")
+    f = open("./userId.txt", "r")
     userId = f.read()
     if userId == "":
         username = ""
@@ -132,13 +131,17 @@ def main():
         if userInput == "EXIT":
             return
 
-        userRequest = userInput.split(" ")[0]
+        userRequest = userInput.split(" ")
 
-        if userRequest == "download":
+        if userRequest[0] == "download":
             download(userInput.split(" ")[1])
-        elif userRequest == "upload":
+        elif userRequest[0] == "sigup":
+            sigup(userRequest[1], userRequest[2], userRequest[3])
+        elif userRequest[0] == "login":
+            helper.login(userRequest[1], userRequest[2])
+        elif userRequest[0] == "upload":
             upload(userInput.split(" ")[1])
-        elif userRequest == "logout":
+        elif userRequest[0] == "logout":
             logout()
             return
         else:
@@ -282,10 +285,72 @@ def handle_client(client_socket):
             }
             client_socket.sendall(json.dumps(response).encode('utf-8'))
 
-if checkLogin():
-    print("Login!")
-    server_thread = threading.Thread(target=start_peer_server, daemon=True)
-    server_thread.start()
-    main()
+
+
+# if checkLogin():
+#     print("Login!")
+#     server_thread = threading.Thread(target=start_peer_server, daemon=True)
+#     server_thread.start()
+#     main()
+
+
+
+def generate_magnet_link(info_hash, display_name=None, trackers=None, web_seeds=None, file_size=None):
+    # Base magnet link with info hash
+    magnet_link = f"magnet:?xt=urn:btih:{info_hash}"
+    
+    # Add display name if provided
+    if display_name:
+        magnet_link += f"&dn={urllib.parse.quote(display_name)}"
+    
+    # Add trackers if provided
+    if trackers:
+        for tracker in trackers:
+            magnet_link += f"&tr={urllib.parse.quote(tracker)}"
+    
+    # Add web seeds if provided
+    if web_seeds:
+        for web_seed in web_seeds:
+            magnet_link += f"&ws={urllib.parse.quote(web_seed)}"
+    
+    # Add file size if provided
+    if file_size:
+        magnet_link += f"&xl={file_size}"
+    
+    return magnet_link
+
+def decode_magnet_link(magnet_link):
+    # Parse the magnet link
+    parsed = urllib.parse.urlparse(magnet_link)
+    params = urllib.parse.parse_qs(parsed.query)
+    
+    # Extract components
+    info_hash = params.get("xt", [None])[0]
+    if info_hash and info_hash.startswith("urn:btih:"):
+        info_hash = info_hash[9:]  # Remove 'urn:btih:' prefix
+
+    display_name = params.get("dn", [None])[0]
+    trackers = params.get("tr", [])
+    web_seeds = params.get("ws", [])
+    file_size = params.get("xl", [None])[0]
+    if file_size:
+        file_size = int(file_size)
+    
+    # Return extracted info as a dictionary
+    return {
+        "info_hash": info_hash,
+        "display_name": display_name,
+        "trackers": trackers,
+        "web_seeds": web_seeds,
+        "file_size": file_size
+    }
+
+# Example usage
+magnet_link = "magnet:?xt=urn:btih:1d5d36563d7e4fbd1d5d36563d7e4fbd&dn=Example+File+Name&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A80&tr=udp%3A%2F%2Ftracker.publicbt.com%3A80&ws=http%3A%2F%2Fexample.com%2Ffile&xl=123456789"
+
+decoded_info = decode_magnet_link(magnet_link)
+print(decoded_info)
+
+
 
 print("End working")
