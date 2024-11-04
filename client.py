@@ -14,24 +14,6 @@ self_port=65434
 PIECE_SIZE = 1
 file_lock = threading.Lock()
 
-# download 754ce21c061ee4c8ca8a0625f7e2ceb683f614c3
-
-# mô phỏng khi muốn download file và gửi yêu cầu tải file lên tracker, tracker trả về những peers chứa file đó
-res = {
-    "peers": [
-        {"IPaddress": "127.0.0.1", "port" : 65432},
-        {"IPaddress": "127.0.0.1", "port" : 65434},
-        {"IPaddress": "127.0.0.1", "port" : 65435},
-    ]
-}
-
-# mô phỏng tracker trả về points của các peers
-pointsRes = {
-    ("127.0.0.1", 65432) : 5,
-    ("127.0.0.1", 65434) : 3,
-    ("127.0.0.1", 65435) : 1,
-}
-
 def download(magnet_link):
     information = helper.decode_magnet_link(magnet_link)
     info_hash = information["info_hash"]
@@ -72,7 +54,6 @@ def download(magnet_link):
             json.dump({"fileName": fileName, "piece_status": [
                 0 for _ in range(fileSize // PIECE_SIZE)
             ]}, f)
-    
     if not os.path.exists(f'storage/{fileName}'):
         with open(f'storage/{fileName}', 'w') as f:
             pass
@@ -87,7 +68,7 @@ def download(magnet_link):
         if data != None and currentStatus[chunk_index] == 1:
             continue
         best_peer = None
-        best_priority = -1
+        best_priority = -1000
 
         for peer_index, peer_chunks in enumerate(pieces):
             if peer_chunks[chunk_index] == 1:
@@ -101,9 +82,14 @@ def download(magnet_link):
         if best_peer is not None:
             selected_chunks[best_peer].append(chunk_index)
 
+    threads = []
     for (ip, port), chunks in selected_chunks.items():
         peer_thread = threading.Thread(target=download_file_chunk_from_peer, args=(ip, port, info_hash, chunks, f"storage/{fileName}"),daemon=True)
         peer_thread.start()
+        threads.append(peer_thread)
+    
+    for thread in threads:
+        thread.join()
 
     dataInJsonFile = {}
 
@@ -117,8 +103,101 @@ def download(magnet_link):
     userId = f.read()
     userPoint = helper.search_by_id(userId)["data"]["point"]
     newPoint = userPoint + sum(dataInJsonFile["piece_status"])
+    print(newPoint)
     helper.update_user(newPoint, userId)
+    helper.upload_file(info_hash, fileName, fileSize, self_ip_address, self_port, userId)
 
+def download_by_torrent_file(path):
+    information = helper.extract_torrent_info(path)
+    info_hash = information["info_hash"]
+    fileName = information["filename"]
+    fileSize =  information["file_size"]
+
+    response = {
+        "peers" : (helper.get_file_info_from_server(info_hash))['data'][0]['peers']
+    }
+
+    print(response)
+    
+    ips = [peer["IPaddress"] for peer in response["peers"]]
+    ports = [peer["port"] for peer in response["peers"]]
+    pieces = [[] for _ in response["peers"]]
+    point = [0 for _ in range(len(response["peers"]))]
+
+    for i in range(len(ips)):
+        ips[i], ports[i], pieces[i], point[i] = get_file_status_in_peer(ips[i], ports[i], info_hash)
+
+    points = {}
+
+    for i in range(len(ips)):
+        points[(ips[i], ports[i])] = point[i]
+
+    peers = [(ips[i], ports[i]) for i in range(len(ips))]
+
+    selected_chunks = {peer: [] for peer in peers}
+
+    num_chunks = len(pieces[0])
+
+    currentStatus = []
+    if not os.path.exists(f'files/{info_hash}'):
+        os.makedirs(f'files/{info_hash}')
+
+    if not os.path.exists(f'files/{info_hash}/status.json'):
+        with open(f'files/{info_hash}/status.json', 'w') as f:
+            json.dump({"fileName": fileName, "piece_status": [
+                0 for _ in range(fileSize // PIECE_SIZE)
+            ]}, f)
+    if not os.path.exists(f'storage/{fileName}'):
+        with open(f'storage/{fileName}', 'w') as f:
+            pass
+
+    with open(f'files/{info_hash}/status.json', 'r') as f:
+        data = json.load(f)
+
+    if data != None:
+        currentStatus = data["piece_status"]
+
+    for chunk_index in range(num_chunks):
+        if data != None and currentStatus[chunk_index] == 1:
+            continue
+        best_peer = None
+        best_priority = -1000
+
+        for peer_index, peer_chunks in enumerate(pieces):
+            if peer_chunks[chunk_index] == 1:
+                peer = peers[peer_index]
+                priority = points[peer]
+
+                if priority > best_priority:
+                    best_priority = priority
+                    best_peer = peer
+
+        if best_peer is not None:
+            selected_chunks[best_peer].append(chunk_index)
+
+    threads = []
+    for (ip, port), chunks in selected_chunks.items():
+        peer_thread = threading.Thread(target=download_file_chunk_from_peer, args=(ip, port, info_hash, chunks, f"storage/{fileName}"),daemon=True)
+        peer_thread.start()
+        threads.append(peer_thread)
+    
+    for thread in threads:
+        thread.join()
+
+    dataInJsonFile = {}
+
+    with open(f"files/{info_hash}/status.json", "r") as file:
+        data = json.load(file)
+        dataInJsonFile = data
+        if all(status == 0 for status in data["piece_status"]):
+            return
+    
+    f = open("userId.txt", "r")
+    userId = f.read()
+    userPoint = helper.search_by_id(userId)["data"]["point"]
+    newPoint = userPoint + sum(dataInJsonFile["piece_status"])
+    print(newPoint)
+    helper.update_user(newPoint, userId)
     helper.upload_file(info_hash, fileName, fileSize, self_ip_address, self_port, userId)
 
 def login(username, password) -> bool:
@@ -203,12 +282,13 @@ def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, fil
                     currentStatus = data["piece_status"]
                     fileName = data["fileName"]
 
-
                 with open(file_path, "r+b") as f:  
                     for i, chunk in enumerate(chunk_data):
                         f.seek(chunk_list[i] * PIECE_SIZE)
                         f.write(chunk.encode('latin1'))
                         currentStatus[chunk_list[i]] = 1
+
+                print(currentStatus)
 
                 with open(f"files/{info_hash}/status.json", "w") as file:
                     json.dump(
@@ -286,6 +366,8 @@ def handle_client(client_socket):
                 'point': 0
             }
 
+            print(info_hash)
+
             with open(f'files/{info_hash}/status.json', 'r') as f:
                 data = json.load(f)
 
@@ -343,7 +425,6 @@ def handle_client(client_socket):
                 userPoint = helper.search_by_id(userId)["data"]["point"]
                 newPoint = userPoint - (len(chunk_list))
                 helper.update_user(newPoint, userId)
-
             except FileNotFoundError:
                 print(f"File {file_name} does not exit.")
                 client_socket.sendall(json.dumps(response).encode('utf-8'))
@@ -363,7 +444,8 @@ def sigup(username, passwork, fullname):
     print(response)
     return response
 
-def upload_full_file(filename, filesize):
+def upload_full_file(filename):
+    filesize = os.path.getsize(f"storage/{filename}")
     infohash = helper.generate_hash_info(f"storage/{filename}")
 
     os.makedirs(f"files/{infohash}", exist_ok=True)
@@ -371,17 +453,20 @@ def upload_full_file(filename, filesize):
         json.dump(
             {
                 "fileName": filename,
-                "piece_status": [1 for _ in range(filesize / PIECE_SIZE) ]
+                "piece_status": [1 for _ in range(filesize // PIECE_SIZE) ]
             }, 
             file
         )
         
-
     f = open("userId.txt", "r")
     userId = f.read()
     helper.upload_file(infohash, filename, filesize, self_ip_address, self_port, userId)
+    helper.file_to_torrent(f"storage/{filename}", filename, "http://localhost:3000/v1",filesize)
 
     return helper.generate_magnet_link(infohash, filename, filesize, "http://localhost:3000/v1", None)
+
+def generate_torrent_file(path):
+    helper.file_to_torrent(path)
 
 def main():
     userInput = ""
@@ -395,13 +480,18 @@ def main():
         if userRequest[0] == "download":
             magnet_link =  userRequest[1]
             download(magnet_link)
+        elif userRequest[0] == "downtorr":
+            path =  userRequest[1]
+            download_by_torrent_file(path)
         elif userRequest[0] == "upload":
             file_name = userRequest[1]
-            file_size = userRequest[2]
-            upload_full_file(file_name, file_size)
+            print(upload_full_file(file_name))
         elif userRequest[0] == "logout":
             logout()
             return
+        elif userRequest[0] == "generateTorrent":
+            path = userRequest[1]
+            generate_torrent_file(path)
         else:
             print("User input something")
 
@@ -411,5 +501,6 @@ if checkLogin():
     print("Login!")
     sleep(0.2)
     main()
+
 
 print("End working")
