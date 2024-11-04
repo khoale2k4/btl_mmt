@@ -11,7 +11,7 @@ from helper import main as helper
 
 self_ip_address = "127.0.0.1"
 self_port=65434
-PIECE_SIZE = 1
+PIECE_SIZE = 1024
 file_lock = threading.Lock()
 
 def download(magnet_link):
@@ -270,7 +270,12 @@ def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, fil
 
         s.sendall(json.dumps(request).encode('utf-8'))
         
-        response_data = s.recv(4096)
+        response_data = b""
+        while True:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            response_data += chunk
         response = json.loads(response_data.decode('utf-8'))
         # print(f"and get chunks: {response['chunk_data']}")
         if response['type'] == 'RETURN_FILE_CHUNK' and response['info_hash'] == info_hash:
