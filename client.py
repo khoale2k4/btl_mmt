@@ -11,7 +11,7 @@ from helper import main as helper
 
 self_ip_address = "127.0.0.1"
 self_port=65434
-PIECE_SIZE = 1024
+PIECE_SIZE = 1024 * 64
 file_lock = threading.Lock()
 
 def download(magnet_link):
@@ -260,7 +260,7 @@ def checkLogin():
 def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, file_path):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((peer_ip, peer_port))
-        # print(f"Connected to {peer_ip}:{peer_port}")
+        print(f"Connected to {peer_ip}:{peer_port}. Asking for: {str(chunk_list)}")
         
         request = {
             'type': 'GET_FILE_CHUNK',
@@ -269,6 +269,7 @@ def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, fil
         }
 
         s.sendall(json.dumps(request).encode('utf-8'))
+        
         
         response_data = b""
         while True:
@@ -281,28 +282,32 @@ def download_file_chunk_from_peer(peer_ip, peer_port, info_hash, chunk_list, fil
         if response['type'] == 'RETURN_FILE_CHUNK' and response['info_hash'] == info_hash:
             chunk_data = response['chunk_data']
 
-            with file_lock:
-                with open(f"files/{info_hash}/status.json", "r") as file:
-                    data = json.load(file)
-                    currentStatus = data["piece_status"]
-                    fileName = data["fileName"]
+            for i, chunk in enumerate(chunk_data):
+                with file_lock:
+                    # Đọc status từ file
+                    with open(f"files/{info_hash}/status.json", "r") as file:
+                        data = json.load(file)
+                        currentStatus = data["piece_status"]
+                        fileName = data["fileName"]
 
-                with open(file_path, "r+b") as f:  
-                    for i, chunk in enumerate(chunk_data):
+                    # Ghi một phần chunk vào file
+                    with open(file_path, "r+b") as f:
                         f.seek(chunk_list[i] * PIECE_SIZE)
                         f.write(chunk.encode('latin1'))
                         currentStatus[chunk_list[i]] = 1
+                        print(currentStatus)
 
-                print(currentStatus)
+                    # Cập nhật status.json với thay đổi
+                    with open(f"files/{info_hash}/status.json", "w") as file:
+                        json.dump(
+                            {
+                                "fileName": fileName,
+                                "piece_status": currentStatus
+                            },
+                            file
+                        )
+                sleep(0.05)
 
-                with open(f"files/{info_hash}/status.json", "w") as file:
-                    json.dump(
-                        {
-                            "fileName": fileName,
-                            "piece_status": currentStatus
-                        }, 
-                        file
-                    )
         else:
             print("Has been received invalid response from peer")
 
@@ -466,7 +471,7 @@ def upload_full_file(filename):
     f = open("userId.txt", "r")
     userId = f.read()
     helper.upload_file(infohash, filename, filesize, self_ip_address, self_port, userId)
-    helper.file_to_torrent(f"storage/{filename}", filename, "http://localhost:3000/v1",filesize)
+    helper.file_to_torrent(f"storage/{filename}","http://localhost:3000/v1",filesize)
 
     return helper.generate_magnet_link(infohash, filename, filesize, "http://localhost:3000/v1", None)
 
